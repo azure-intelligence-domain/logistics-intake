@@ -1,0 +1,85 @@
+name: deploy
+
+# Contract check and flow tests, then on main: the Logic App, and proof that only the gateway may
+# start a run. OIDC as id-intplat-logistics-intake.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  RESOURCE_GROUP: rg-intplat-logistics-intake
+
+jobs:
+  contracts:
+    uses: azure-intelligence-domain/contracts/.github/workflows/contract-check.yml@v1.1.0
+    with:
+      contracts: asyncapi.yaml
+      contracts-ref: v1.2.0
+
+  test:
+    name: Flow tests and Bicep
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Flow tests
+        run: uv run --no-project --with pyyaml --with pytest pytest -q tests
+      - name: Bicep (any warning fails the build)
+        run: |
+          az bicep install --only-show-errors
+          diagnostics=$("$HOME/.azure/bin/bicep" build infra/main.bicep --stdout 2>&1 >/dev/null || true)
+          if echo "$diagnostics" | grep -qE ': (Warning|Error) '; then echo "$diagnostics"; exit 1; fi
+          echo "✅ infra/main.bicep"
+
+  deploy:
+    name: Deploy and smoke test
+    needs: [contracts, test]
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    environment: azure
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Acquire Event Grid token (for the deployment event)
+        run: |
+          token=$(az account get-access-token --resource https://eventgrid.azure.net --query accessToken -o tsv)
+          echo "::add-mask::$token"
+          echo "EVENTGRID_TOKEN=$token" >> "$GITHUB_ENV"
+      - name: What-if
+        run: az deployment group what-if -g "$RESOURCE_GROUP" -n logistics-intake -f infra/main.bicep
+      - name: Deploy
+        run: |
+          url=$(az deployment group create -g "$RESOURCE_GROUP" -n logistics-intake -f infra/main.bicep \
+            --query properties.outputs.invokeUrl.value -o tsv)
+          echo "INVOKE_URL=$url" >> "$GITHUB_ENV"
+      - name: Smoke test — only the gateway may start a run
+        run: |
+          status=$(curl -s -o body.json -w '%{http_code}' -X POST "$INVOKE_URL" -H "Content-Type: application/json" -d '{}')
+          cat body.json; echo
+          test "$status" = 401
+          echo "✅ no gateway token: 401"
+      - name: Deployment event
+        if: always()
+        uses: azure-intelligence-domain/integration-platform/.github/actions/deployment-event@v1.2.0
+        with:
+          token: ${{ env.EVENTGRID_TOKEN }}
+          component: logistics-intake
+          version: ${{ github.sha }}
+          status: ${{ job.status }}

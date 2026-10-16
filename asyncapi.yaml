@@ -1,0 +1,60 @@
+asyncapi: 2.6.0
+id: urn:azure-intelligence-domain:logistics:logistics-intake
+info:
+  title: '[Logistics] Logistics Intake'
+  version: 1.0.0
+  description: 'What the logistics domain takes in from other domains: OrderReadyForShipment, which logistics-intake
+    asks the 3PL partner to ship the order (partner API 2.3). A consumer contract: it only receives (ADR 0009, 0015).'
+  contact:
+    name: Logistics Domain Team
+    url: https://github.com/azure-intelligence-domain/logistics-intake
+  license:
+    name: MIT
+    url: https://github.com/azure-intelligence-domain/logistics-intake/blob/main/LICENSE
+tags:
+- name: logistics
+  description: Logistics domain.
+externalDocs:
+  description: EventCatalog entry of the logistics domain
+  url: https://azure-intelligence-domain.github.io/eventcatalog/docs/domains/logistics/1.0.0
+defaultContentType: application/cloudevents+json
+servers:
+  demo-event-grid:
+    $ref: https://raw.githubusercontent.com/azure-intelligence-domain/contracts/v1.2.0/asyncapi/landscape.asyncapi.yaml#/components/servers/demo-event-grid
+channels:
+  order.process-api-order.event.order-ready-for-shipment:
+    description: OrderReadyForShipment, published by the Order Process API; logistics-intake asks the 3PL partner
+      to ship the order (partner API 2.3).
+    servers:
+    - demo-event-grid
+    x-configurations:
+      demo:
+        eventGrid:
+          topic: evgt-intplat-order
+          eventType: com.acme.order.readyForShipment
+    subscribe:
+      operationId: receiveOrderReadyForShipment
+      summary: Receive OrderReadyForShipment.
+      description: logistics-intake receives OrderReadyForShipment through the platform's event intake (subscription
+        logistics-intake) and asks the 3PL partner to ship the order (partner API 2.3), through the gateway.
+      security:
+      - platformIntake: []
+      tags:
+      - name: logistics
+        description: Logistics domain.
+      externalDocs:
+        description: The logistics-intake flow
+        url: https://github.com/azure-intelligence-domain/logistics-intake
+      x-consumers:
+        demo:
+        - logistics-intake
+      message:
+        $ref: https://raw.githubusercontent.com/azure-intelligence-domain/process-api-order/v1.1.0/asyncapi.yaml#/components/messages/orderReadyForShipment
+components:
+  securitySchemes:
+    platformIntake:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: The platform's event intake delivers with an Entra ID token of the gateway's managed identity
+        for the intplat-platform-apis application; the Logic App's OAuth policy lets only that in (ADR 0016).

@@ -1,0 +1,141 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0",
+  "parameters": {
+    "gateway": {
+      "type": "String",
+      "defaultValue": "https://apim-intplat-demo.azure-api.net"
+    }
+  },
+  "triggers": {
+    "event": {
+      "type": "Request",
+      "kind": "Http",
+      "inputs": {
+        "method": "POST"
+      },
+      "description": "One CloudEvent, delivered by the platform's event intake (ADR 0016)."
+    }
+  },
+  "actions": {
+    "Event": {
+      "type": "Compose",
+      "inputs": "@triggerBody()",
+      "runAfter": {}
+    },
+    "Route": {
+      "type": "Switch",
+      "expression": "@outputs('Event')?['type']",
+      "runAfter": {
+        "Event": [
+          "Succeeded"
+        ]
+      },
+      "cases": {
+        "OrderReadyForShipment": {
+          "case": "com.acme.order.readyForShipment",
+          "actions": {
+            "Lines": {
+              "type": "Select",
+              "inputs": {
+                "from": "@outputs('Event')?['data']?['orderLines']",
+                "select": {
+                  "productId": "@item()?['productId']",
+                  "quantity": "@item()?['quantity']"
+                }
+              }
+            },
+            "Shipment_request": {
+              "type": "Compose",
+              "runAfter": {
+                "Lines": [
+                  "Succeeded"
+                ]
+              },
+              "inputs": {
+                "orderId": "@outputs('Event')?['data']?['orderId']",
+                "customerId": "@outputs('Event')?['data']?['customerId']",
+                "deliveryAddress": "@outputs('Event')?['data']?['deliveryAddress']",
+                "orderLines": "@body('Lines')",
+                "requestedDeliveryDate": "@outputs('Event')?['data']?['requestedDeliveryDate']"
+              }
+            },
+            "Request_shipment": {
+              "type": "Http",
+              "inputs": {
+                "method": "POST",
+                "uri": "@{parameters('gateway')}/3pl/shipments",
+                "headers": {
+                  "Content-Type": "application/json",
+                  "Correlation-Id": "@{outputs('Event')?['correlationid']}",
+                  "traceparent": "@{coalesce(triggerOutputs()?['headers']?['traceparent'], '')}"
+                },
+                "body": "@if(equals(outputs('Shipment_request')?['requestedDeliveryDate'], null), removeProperty(outputs('Shipment_request'), 'requestedDeliveryDate'), outputs('Shipment_request'))",
+                "authentication": {
+                  "type": "ManagedServiceIdentity",
+                  "identity": "__IDENTITY__",
+                  "audience": "__AUDIENCE__"
+                },
+                "retryPolicy": {
+                  "type": "none"
+                }
+              },
+              "runAfter": {
+                "Shipment_request": [
+                  "Succeeded"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "default": {
+        "actions": {}
+      }
+    },
+    "Handled": {
+      "type": "Response",
+      "kind": "Http",
+      "runAfter": {
+        "Route": [
+          "Succeeded"
+        ]
+      },
+      "inputs": {
+        "statusCode": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "flow": "logistics-intake",
+          "event": "@{outputs('Event')?['type']}",
+          "id": "@{outputs('Event')?['id']}"
+        }
+      }
+    },
+    "Failed": {
+      "type": "Response",
+      "kind": "Http",
+      "runAfter": {
+        "Route": [
+          "Failed",
+          "TimedOut"
+        ]
+      },
+      "inputs": {
+        "statusCode": 502,
+        "headers": {
+          "Content-Type": "application/problem+json"
+        },
+        "body": {
+          "type": "https://github.com/azure-intelligence-domain/logistics-intake/blob/main/README.md#when-a-delivery-fails",
+          "title": "Delivery Failed",
+          "status": 502,
+          "detail": "logistics-intake could not hand the event to the 3PL System API; Event Grid retries, then dead-letters.",
+          "instance": "@{outputs('Event')?['id']}"
+        }
+      }
+    }
+  },
+  "outputs": {}
+}
