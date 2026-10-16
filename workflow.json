@@ -18,16 +18,16 @@
     }
   },
   "actions": {
-    "Event": {
+    "CloudEvent": {
       "type": "Compose",
       "inputs": "@triggerBody()",
       "runAfter": {}
     },
     "Route": {
       "type": "Switch",
-      "expression": "@outputs('Event')?['type']",
+      "expression": "@outputs('CloudEvent')?['type']",
       "runAfter": {
-        "Event": [
+        "CloudEvent": [
           "Succeeded"
         ]
       },
@@ -38,7 +38,7 @@
             "Lines": {
               "type": "Select",
               "inputs": {
-                "from": "@outputs('Event')?['data']?['orderLines']",
+                "from": "@outputs('CloudEvent')?['data']?['orderLines']",
                 "select": {
                   "productId": "@item()?['productId']",
                   "quantity": "@item()?['quantity']"
@@ -53,11 +53,11 @@
                 ]
               },
               "inputs": {
-                "orderId": "@outputs('Event')?['data']?['orderId']",
-                "customerId": "@outputs('Event')?['data']?['customerId']",
-                "deliveryAddress": "@outputs('Event')?['data']?['deliveryAddress']",
+                "orderId": "@outputs('CloudEvent')?['data']?['orderId']",
+                "customerId": "@outputs('CloudEvent')?['data']?['customerId']",
+                "deliveryAddress": "@outputs('CloudEvent')?['data']?['deliveryAddress']",
                 "orderLines": "@body('Lines')",
-                "requestedDeliveryDate": "@outputs('Event')?['data']?['requestedDeliveryDate']"
+                "requestedDeliveryDate": "@outputs('CloudEvent')?['data']?['requestedDeliveryDate']"
               }
             },
             "Request_shipment": {
@@ -67,7 +67,7 @@
                 "uri": "@{parameters('gateway')}/3pl/shipments",
                 "headers": {
                   "Content-Type": "application/json",
-                  "Correlation-Id": "@{outputs('Event')?['correlationid']}",
+                  "Correlation-Id": "@{outputs('CloudEvent')?['correlationid']}",
                   "traceparent": "@{coalesce(triggerOutputs()?['headers']?['traceparent'], '')}"
                 },
                 "body": "@if(equals(outputs('Shipment_request')?['requestedDeliveryDate'], null), removeProperty(outputs('Shipment_request'), 'requestedDeliveryDate'), outputs('Shipment_request'))",
@@ -108,8 +108,8 @@
         },
         "body": {
           "flow": "logistics-intake",
-          "event": "@{outputs('Event')?['type']}",
-          "id": "@{outputs('Event')?['id']}"
+          "event": "@{outputs('CloudEvent')?['type']}",
+          "id": "@{outputs('CloudEvent')?['id']}"
         }
       }
     },
@@ -132,7 +132,7 @@
           "title": "Delivery Failed",
           "status": 502,
           "detail": "logistics-intake could not hand the event to the 3PL System API; Event Grid retries, then dead-letters.",
-          "instance": "@{outputs('Event')?['id']}"
+          "instance": "@{outputs('CloudEvent')?['id']}"
         }
       }
     }
