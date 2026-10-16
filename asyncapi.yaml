@@ -52,6 +52,8 @@ channels:
         $ref: https://raw.githubusercontent.com/azure-intelligence-domain/process-api-order/v1.1.0/asyncapi.yaml#/components/messages/orderReadyForShipment
 components:
   securitySchemes:
+    entraIdEventGrid:
+      $ref: https://raw.githubusercontent.com/azure-intelligence-domain/contracts/v1.2.0/asyncapi/landscape.asyncapi.yaml#/components/securitySchemes/entraIdEventGrid
     platformIntake:
       type: http
       scheme: bearer
