@@ -15,9 +15,10 @@ def calls(actions):
     for name, action in actions.items():
         if action["type"] == "Http":
             yield name, action
-        for nested in ("actions",):
-            if nested in action:
-                yield from calls(action[nested])
+        if "actions" in action:
+            yield from calls(action["actions"])
+        if "else" in action:
+            yield from calls(action["else"]["actions"])
 
 
 def test_handles_exactly_what_the_contract_receives():
@@ -34,6 +35,14 @@ def test_calls_only_its_own_system_api_through_the_gateway():
             assert inputs["authentication"]["type"] == "ManagedServiceIdentity", name
             assert inputs["headers"]["Correlation-Id"], name
             assert inputs["retryPolicy"] == {"type": "none"}, "Event Grid retries the delivery, not the flow"
+
+
+def test_a_cancellation_undoes_only_what_the_order_names():
+    cancelled = FLOW["actions"]["Route"]["cases"]["OrderCancelled"]["actions"]
+    (condition,) = cancelled.values()
+    assert condition["type"] == "If" and not condition["else"]["actions"]
+    (call,) = [action for _, action in calls(cancelled)]
+    assert call["inputs"]["method"] == "DELETE" and "reason=" in call["inputs"]["uri"]
 
 
 def test_a_failure_is_a_5xx_so_event_grid_retries():

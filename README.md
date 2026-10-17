@@ -2,8 +2,9 @@
 
 The **logistics domain's intake flow** ([ADR 0015](https://github.com/azure-intelligence-domain/ai-intelligence-domain/blob/main/docs/adr/0015-one-intake-per-domain.md)):
 what the logistics domain takes in from other domains. A Logic App (Consumption), owned by the
-**logistics-team**. It receives **OrderReadyForShipment** and asks the 3PL partner to ship, through the gateway, with the
-3PL System API; the System API then publishes ShipmentDispatched.
+**logistics-team**. It receives **OrderReadyForShipment** and books the shipment with the 3PL partner, through the gateway,
+with the 3PL System API; the System API publishes ShipmentBooked, and later, on the partner's notices,
+ShipmentDispatched and ShipmentDelivered. It also receives **OrderCancelled** (below).
 
 | File | What |
 |---|---|
@@ -21,11 +22,11 @@ sequenceDiagram
     participant S as 3PL System API
     EG->>G: OrderReadyForShipment (subscription logistics-intake, filtered on the event type)
     G->>LA: POST /intake/logistics-intake → run (gateway identity, OAuth policy)
-    LA->>G: POST /3pl/shipments (runtime identity, Correlation-Id)
+    LA->>G: POST /3pl/shipment-bookings (runtime identity, Correlation-Id)
     G->>S: system-apis product: allow-listed caller
     S-->>LA: 201
     LA-->>G: 200
-    Note over EG,S: The System API publishes ShipmentDispatched. A failure: 502, Event Grid retries, then dead-letters into the tap.
+    Note over EG,S: The System API publishes ShipmentBooked. A failure: 502, Event Grid retries, then dead-letters into the tap.
 ```
 
 ## Mapping
@@ -34,7 +35,21 @@ The flow maps the order domain's event onto the 3PL System API's contract; nothi
 
 ```mermaid
 flowchart LR
-    ev["OrderReadyForShipment<br/>(order domain contract)"] -- "workflow.json" --> req["/3pl/shipments<br/>(3PL System API contract)"]
+    ev["OrderReadyForShipment<br/>(order domain contract)"] -- "workflow.json" --> req["/3pl/shipment-bookings<br/>(3PL System API contract)"]
+```
+
+## When an order is cancelled (since 1.1.0)
+
+**OrderCancelled** names what each domain has for the order ([ADR 0018](https://github.com/azure-intelligence-domain/ai-intelligence-domain/blob/main/docs/adr/0018-cancellation-reaches-every-domain.md)).
+If it carries `shipmentId`, the flow cancels the 3PL booking (until the partner picks it up): `DELETE /3pl/shipment-bookings/{shipmentId}?reason=`, and the 3PL System API
+publishes **ShipmentCancelled**. Without `shipmentId` the 3PL has nothing for this order yet, and the run ends
+`200` without a call.
+
+```mermaid
+flowchart LR
+    oc[["OrderCancelled<br/>shipmentId"]] --> c{"shipmentId set?"}
+    c -- yes --> d["DELETE /3pl/shipment-bookings/{shipmentId}"] --> f[["ShipmentCancelled"]]
+    c -- no --> n["nothing to undo: 200"]
 ```
 
 ## When a delivery fails

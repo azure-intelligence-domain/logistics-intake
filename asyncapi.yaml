@@ -2,9 +2,11 @@ asyncapi: 2.6.0
 id: urn:azure-intelligence-domain:logistics:logistics-intake
 info:
   title: '[Logistics] Logistics Intake'
-  version: 1.0.0
+  version: 1.1.0
   description: 'What the logistics domain takes in from other domains: OrderReadyForShipment, which logistics-intake
-    asks the 3PL partner to ship the order (partner API 2.3). A consumer contract: it only receives (ADR 0009, 0015).'
+    books the order''s shipment with the 3PL partner (partner API 2.3), and OrderCancelled, which it cancels the
+    3PL booking (until the partner picks it up) (since 1.1.0). A consumer contract: it only receives (ADR 0009,
+    0015, 0018).'
   contact:
     name: Logistics Domain Team
     url: https://github.com/azure-intelligence-domain/logistics-intake
@@ -23,8 +25,8 @@ servers:
     $ref: https://raw.githubusercontent.com/azure-intelligence-domain/contracts/v1.2.0/asyncapi/landscape.asyncapi.yaml#/components/servers/demo-event-grid
 channels:
   order.process-api-order.event.order-ready-for-shipment:
-    description: OrderReadyForShipment, published by the Order Process API; logistics-intake asks the 3PL partner
-      to ship the order (partner API 2.3).
+    description: OrderReadyForShipment, published by the Order Process API; logistics-intake books the order's shipment
+      with the 3PL partner (partner API 2.3).
     servers:
     - demo-event-grid
     x-configurations:
@@ -36,7 +38,7 @@ channels:
       operationId: receiveOrderReadyForShipment
       summary: Receive OrderReadyForShipment.
       description: logistics-intake receives OrderReadyForShipment through the platform's event intake (subscription
-        logistics-intake) and asks the 3PL partner to ship the order (partner API 2.3), through the gateway.
+        logistics-intake) and books the order's shipment with the 3PL partner (partner API 2.3), through the gateway.
       security:
       - platformIntake: []
       tags:
@@ -50,6 +52,34 @@ channels:
         - logistics-intake
       message:
         $ref: https://raw.githubusercontent.com/azure-intelligence-domain/process-api-order/v1.1.0/asyncapi.yaml#/components/messages/orderReadyForShipment
+  order.process-api-order.event.order-cancelled:
+    description: OrderCancelled, published by the Order Process API; logistics-intake cancels the 3PL booking (until
+      the partner picks it up), publishing ShipmentCancelled.
+    servers:
+    - demo-event-grid
+    x-configurations:
+      demo:
+        eventGrid:
+          topic: evgt-intplat-order
+          eventType: com.acme.order.cancelled
+    subscribe:
+      operationId: receiveOrderCancelled
+      summary: Receive OrderCancelled.
+      description: logistics-intake receives OrderCancelled through the platform's event intake (subscription logistics-intake)
+        and cancels the 3PL booking (until the partner picks it up), publishing ShipmentCancelled, through the gateway.
+      security:
+      - platformIntake: []
+      tags:
+      - name: logistics
+        description: Logistics domain.
+      externalDocs:
+        description: The logistics-intake flow
+        url: https://github.com/azure-intelligence-domain/logistics-intake
+      x-consumers:
+        demo:
+        - logistics-intake
+      message:
+        $ref: https://raw.githubusercontent.com/azure-intelligence-domain/process-api-order/v1.2.0/asyncapi.yaml#/components/messages/orderCancelled
 components:
   securitySchemes:
     entraIdEventGrid:

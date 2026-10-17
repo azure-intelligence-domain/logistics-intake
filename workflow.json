@@ -60,11 +60,11 @@
                 "requestedDeliveryDate": "@outputs('CloudEvent')?['data']?['requestedDeliveryDate']"
               }
             },
-            "Request_shipment": {
+            "Book_shipment": {
               "type": "Http",
               "inputs": {
                 "method": "POST",
-                "uri": "@{parameters('gateway')}/3pl/shipments",
+                "uri": "@{parameters('gateway')}/3pl/shipment-bookings",
                 "headers": {
                   "Content-Type": "application/json",
                   "Correlation-Id": "@{outputs('CloudEvent')?['correlationid']}",
@@ -84,6 +84,52 @@
                 "Shipment_request": [
                   "Succeeded"
                 ]
+              }
+            }
+          }
+        },
+        "OrderCancelled": {
+          "case": "com.acme.order.cancelled",
+          "actions": {
+            "Has_shipmentId": {
+              "type": "If",
+              "runAfter": {},
+              "expression": {
+                "and": [
+                  {
+                    "not": {
+                      "equals": [
+                        "@coalesce(outputs('CloudEvent')?['data']?['shipmentId'], '')",
+                        ""
+                      ]
+                    }
+                  }
+                ]
+              },
+              "actions": {
+                "Cancel_shipment_booking": {
+                  "type": "Http",
+                  "inputs": {
+                    "method": "DELETE",
+                    "uri": "@{parameters('gateway')}/3pl/shipment-bookings/@{encodeUriComponent(outputs('CloudEvent')?['data']?['shipmentId'])}?reason=@{encodeUriComponent(coalesce(outputs('CloudEvent')?['data']?['reason'], 'Order cancelled.'))}",
+                    "headers": {
+                      "Content-Type": "application/json",
+                      "Correlation-Id": "@{outputs('CloudEvent')?['correlationid']}",
+                      "traceparent": "@{coalesce(triggerOutputs()?['headers']?['traceparent'], '')}"
+                    },
+                    "authentication": {
+                      "type": "ManagedServiceIdentity",
+                      "identity": "__IDENTITY__",
+                      "audience": "__AUDIENCE__"
+                    },
+                    "retryPolicy": {
+                      "type": "none"
+                    }
+                  }
+                }
+              },
+              "else": {
+                "actions": {}
               }
             }
           }

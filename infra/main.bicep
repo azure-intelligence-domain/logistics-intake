@@ -1,5 +1,5 @@
 // logistics-intake: the logistics domain's intake flow (ADR 0015), a Logic App (Consumption) in
-// rg-intplat-logistics-intake. The platform's event intake delivers OrderReadyForShipment to it (ADR 0016); it asks the 3PL partner to ship the order (partner API 2.3),
+// rg-intplat-logistics-intake. The platform's event intake delivers OrderReadyForShipment to it (ADR 0016); it books the order's shipment with the 3PL partner (partner API 2.3),
 // through the gateway, as its runtime identity. Pay per run: nothing polls.
 
 param location string = 'belgiumcentral'
